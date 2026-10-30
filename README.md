@@ -22,7 +22,7 @@ It is a companion to [tracekit](https://github.com/AshersHolland/Tracekit) but w
 triagekit is built so its output can be defended, not just produced:
 
 - **Read-only.** Evidence is only opened for reading. The output folder may not be inside the evidence, and every file examined is listed with MD5, SHA-1 and SHA-256 in `manifest.csv`.
-- **Explainable.** Each finding states the rule, the organisation whose data rated it, the reason, the innocent explanations to rule out, and the evidence (path, deleted/allocated state, inode, SHA-256, line numbers).
+- **Explainable.** Each finding states the rule, the organization whose data rated it, the reason, the innocent explanations to rule out, and the evidence (path, deleted/allocated state, inode, SHA-256, line numbers).
 - **Deterministic.** The same evidence, rules, feeds and version always produce byte-identical `findings.json`. Its SHA-256 is printed in the report as the **result digest**, so anyone can re-run and compare.
 - **Conservative escalation.** Correlation rules raise priority by **one step only**, can require multiple independent artifacts or source types, and show the full chain of contributing findings.
 - **Nothing tuned away silently.** Allowlists, overrides and suppressed hits are listed in the report.
