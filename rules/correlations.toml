@@ -1,0 +1,51 @@
+# triagekit LOCAL correlation rules
+#
+# A correlation fires when findings that already exist share a subject:
+#   scope = "same_file"  the same artifact
+#           "same_ip"    the same IP address appears in each finding
+#           "same_user"  the same user account appears in each finding
+#
+# requires.all  every pattern must be matched by at least one finding in the group
+# requires.any  at least one pattern must be matched
+#   Patterns match rule IDs with wildcards ("LOCAL-LN-*", "SIGMA:*", "IOC:*", "KEV:*"),
+#   or ATT&CK techniques with the prefix attack: ("attack:T1070*").
+# min_artifacts  contributing findings must come from at least this many different files
+# min_sources    ... and from at least this many different source kinds (local, sigma, ioc, kev)
+# window         all contributing findings must start within this span (e.g. "30m", "2h", "1d");
+#                findings without timestamps cannot satisfy a window, so the rule does not fire.
+#
+# Effect: a new finding whose priority is ONE step above the highest contributing finding
+# (capped at high). The contributing findings keep their own priorities. Correlations never chain.
+
+[[correlate]]
+id = "LOCAL-COR-001"
+title = "Failed and successful logins from the same address"
+scope = "same_ip"
+requires = { all = ["LOCAL-LN-003", "LOCAL-LN-004"] }
+window = "24h"
+reason = "The same address produced repeated authentication failures and a successful login within 24 hours, consistent with password guessing that succeeded."
+# Note: the window compares when each finding starts; it does not prove the failures came first.
+
+[[correlate]]
+id = "LOCAL-COR-002"
+title = "Indicator removal by an account that also staged or transferred data"
+scope = "same_user"
+requires = { all = ["attack:T1070*"], any = ["attack:T1048*", "attack:T1560*", "attack:T1074*"] }
+reason = "The same account is linked to removing evidence of activity and to staging or sending data elsewhere."
+
+[[correlate]]
+id = "LOCAL-COR-003"
+title = "Feed-listed file also flagged by behaviour rules"
+scope = "same_file"
+requires = { all = ["IOC:*"], any = ["LOCAL-*", "SIGMA:*"] }
+min_sources = 2
+reason = "An indicator feed lists this file, and an independent behaviour rule also flagged it."
+
+[[correlate]]
+id = "LOCAL-COR-004"
+title = "Feed-listed address involved in other flagged activity"
+scope = "same_ip"
+requires = { all = ["IOC:*"], any = ["LOCAL-*", "SIGMA:*"] }
+min_artifacts = 2
+min_sources = 2
+reason = "An address listed in an indicator feed also appears in activity flagged by a behaviour rule in a different artifact."

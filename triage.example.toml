@@ -1,0 +1,42 @@
+# triagekit case settings - copy to triage.toml (one per case) and edit.
+# Relative paths are resolved from this file's folder.
+
+[case]
+name = "Case 2026-001"
+examiner = "Your Name"
+
+[sources]
+local_rules = ["rules"]                      # folder(s) of LOCAL rule .toml files
+sigma = []                                   # e.g. ["../sigma/rules/linux"]  (needs: pip install pyyaml)
+kev = ""                                     # e.g. "feeds/cisa_kev.json"       (triagekit.py fetch)
+attack = ""                                  # e.g. "feeds/enterprise-attack.json"
+known_software = []                          # e.g. ["feeds/nsrl/RDS_modern.db"] or a text list of hashes
+
+# One block per indicator feed. Record the date you downloaded it: indicators go stale.
+# [[sources.ioc]]
+# name = "MalwareBazaar SHA-256"
+# org = "abuse.ch"
+# path = "feeds/malwarebazaar_sha256.txt"
+# snapshot_date = "2026-10-29"
+# priority = "high"                          # info | low | medium | high (default high)
+# types = ["sha256"]                         # any of md5, sha1, sha256, ip, url, domain
+
+[scan]
+syslog_year = 2026                           # year for timestamps like "Mar  1 10:00:01"
+max_samples = 5                              # sample lines kept per finding
+kev_mention_priority = "low"                 # priority for a file merely mentioning a KEV-listed CVE
+# log_path_regex = '(^/var/log/|\.log(\.\d+)?$|/\.?[a-z]*sh_history$|/\.history$)'
+
+[thresholds]                                 # referenced by rules as "${thresholds.NAME}"
+large_archive_bytes = 50_000_000
+failed_login_burst = 5
+
+[allow]                                      # known-good items; every use is listed in the report
+ips = []                                     # addresses or CIDR ranges, e.g. ["10.0.0.53", "192.168.10.0/24"]
+users = []                                   # e.g. ["backup_svc"]
+paths = []                                   # regexes on evidence paths, e.g. ['^/opt/vendor/agent/']
+hashes = []                                  # md5 / sha1 / sha256 of files to skip
+
+[override]                                   # per-rule changes; every use is listed in the report
+# "LOCAL-FS-001" = { priority = "low" }
+# "SIGMA:fdc88d25-96fb-4b7c-9633-c0e417fdbd4e" = { enabled = false }

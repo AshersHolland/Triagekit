@@ -1,0 +1,200 @@
+# triagekit LOCAL rules - Linux baseline
+#
+# Local rules fill gaps that published sources (Sigma, CISA KEV, indicator feeds) do not cover.
+# They are always labelled LOCAL in reports so nobody mistakes them for an external standard.
+#
+# Writing a rule:
+#   id, title, priority (info|low|medium|high), target (file|line), reason, match  are required.
+#   false_positives  - the innocent explanations an examiner must rule out (strongly recommended)
+#   attack           - MITRE ATT&CK technique IDs, used as labels only
+#   min_hits         - line rules: only report when at least this many lines in one file match
+#   Thresholds can be referenced as "${thresholds.NAME}" and set per case in triage.toml.
+#
+# file match keys: path_regex, not_path_regex, name_regex, content_regex, executable, size_gt, size_lt,
+#                  state ("allocated" | "deleted" | "file"), any_of = [ {...}, {...} ]
+# line match keys: path_regex, not_path_regex, state (choose which files), line_regex, not_line_regex,
+#                  any_of = [ {line_regex = ...}, ... ]
+# All keys in a match must be true. Paths are as they appear inside the evidence, e.g. /var/log/auth.log.
+# Titles state facts, never conclusions.
+
+# ---------------------------------------------------------------- file rules
+[[rule]]
+id = "LOCAL-FS-001"
+title = "Script or executable stored in a temporary directory"
+priority = "medium"
+target = "file"
+reason = "Temporary directories are world-writable and rarely used to keep scripts or programs, which makes them a common place to stage tools."
+false_positives = "Installers, package managers and build systems briefly unpack scripts here; check the file's content and the surrounding timeline."
+  [rule.match]
+  path_regex = '^/(tmp|var/tmp|dev/shm)/'
+  any_of = [ { executable = true }, { name_regex = '\.(sh|py|pl|rb|elf|bin|so)$' } ]
+
+[[rule]]
+id = "LOCAL-FS-002"
+title = "Hidden executable file"
+priority = "low"
+target = "file"
+attack = ["T1564.001"]
+reason = "The file name starts with a dot, which hides it from a normal directory listing, and the content is a script or program."
+false_positives = "Some legitimate tools keep helper scripts in hidden folders (for example editor plugins or version managers)."
+  [rule.match]
+  path_regex = '/\.[^/]+$'
+  executable = true
+  not_path_regex = '^/(etc/skel|usr|lib|lib64|opt)/'
+
+[[rule]]
+id = "LOCAL-FS-003"
+title = "Deleted archive file"
+priority = "medium"
+target = "file"
+attack = ["T1560"]
+reason = "An archive was deleted. Collected data is often compressed before it leaves a system, and the archive removed afterwards."
+false_positives = "Routine cleanup of downloads, backups or log rotation (.gz) produces deleted archives; check what the archive contained."
+  [rule.match]
+  state = "deleted"
+  name_regex = '\.(zip|tar|tgz|tar\.gz|bz2|xz|7z|rar)$'
+  not_path_regex = '^/var/log/'
+
+[[rule]]
+id = "LOCAL-FS-004"
+title = "Deleted script or executable"
+priority = "low"
+target = "file"
+attack = ["T1070.004"]
+reason = "A script or program was deleted. Removing tools after use is a common way to reduce what an examiner can find."
+false_positives = "Software updates and uninstalls delete executables; compare with package-manager logs."
+  [rule.match]
+  state = "deleted"
+  any_of = [ { executable = true }, { name_regex = '\.(sh|py|pl|rb|elf|bin)$' } ]
+
+[[rule]]
+id = "LOCAL-FS-005"
+title = "SSH authorized_keys file present"
+priority = "info"
+target = "file"
+attack = ["T1098.004"]
+reason = "Keys listed here can log in without a password. Recorded as context; the examiner should confirm every key is expected."
+false_positives = "Normal on servers administered over SSH."
+  [rule.match]
+  path_regex = '/\.ssh/authorized_keys2?$'
+
+[[rule]]
+id = "LOCAL-FS-006"
+title = "Scheduled task that downloads content or runs from a temporary directory"
+priority = "medium"
+target = "file"
+attack = ["T1053.003"]
+reason = "A cron entry references a temporary directory or a download tool, a common way to keep a program running or re-fetch it."
+false_positives = "Some maintenance jobs download updates or clean /tmp; read the full entry."
+  [rule.match]
+  path_regex = '^/(etc/cron[^/]*/|var/spool/cron/|etc/crontab$)'
+  content_regex = '(/tmp/|/var/tmp/|/dev/shm/|\bcurl\b|\bwget\b|\bnc\s)'
+
+[[rule]]
+id = "LOCAL-FS-007"
+title = "Large archive in a user or temporary directory"
+priority = "low"
+target = "file"
+attack = ["T1074.001"]
+reason = "A large archive sits in a home or temporary directory, consistent with data gathered in one place before transfer."
+false_positives = "Personal backups and downloads; check the contents and creator."
+  [rule.match]
+  path_regex = '^/(home|root|tmp|var/tmp)/'
+  name_regex = '\.(zip|tar|tgz|tar\.gz|bz2|xz|7z|rar)$'
+  size_gt = "${thresholds.large_archive_bytes}"
+
+# ---------------------------------------------------------------- line rules
+[[rule]]
+id = "LOCAL-LN-001"
+title = "Command-history clearing or log-wiping command"
+priority = "high"
+target = "line"
+attack = ["T1070.003", "T1685.006"]    # T1685.006 replaced T1070.002 in ATT&CK v20
+reason = "The line contains a command that clears shell history or deletes/empties system logs, which removes the record of activity."
+false_positives = "Rare. Occasionally part of documented cleanup or image-preparation scripts."
+  [rule.match]
+  line_regex = '''(\bhistory\s+-c\b|\bunset\s+HISTFILE\b|HISTFILESIZE=0|HISTSIZE=0|\bshred\b.*(history|/var/log/)|\brm\s+(-\w+\s+)*\S*(_history\b|/var/log/)|>\s*\S*/var/log/\S+|\btruncate\s+-s\s*0\b|\bjournalctl\s+--vacuum)'''
+
+[[rule]]
+id = "LOCAL-LN-002"
+title = "File transfer command in shell history"
+priority = "medium"
+target = "line"
+attack = ["T1048"]
+reason = "The user ran a command that copies data to another host."
+false_positives = "Administrators copy files between servers routinely; check destination, timing and what was sent."
+  [rule.match]
+  path_regex = '(sh_history|/\.history)$'
+  line_regex = '''(\bscp\s.*\S+:|\brsync\s.*\S+:|\bsftp\s|\bftp\s+\S|\bcurl\b.*(\s-T\s|--upload-file|\s-F\s|--data-binary)|\bnc\s+(-\w+\s+)*\d{1,3}(\.\d{1,3}){3}\s+\d+)'''
+
+[[rule]]
+id = "LOCAL-LN-003"
+title = "Repeated failed authentication"
+priority = "low"
+target = "line"
+attack = ["T1110"]
+min_hits = "${thresholds.failed_login_burst}"
+reason = "The authentication log records repeated failed logins (at least the configured threshold in this file)."
+false_positives = "Forgotten passwords, misconfigured services, and the background internet scanning every exposed SSH server receives."
+  [rule.match]
+  path_regex = '/(auth\.log|secure)(\.\d+)?$'
+  line_regex = '(Failed password for|authentication failure|Invalid user \S+ from)'
+
+[[rule]]
+id = "LOCAL-LN-004"
+title = "Successful SSH login"
+priority = "info"
+target = "line"
+attack = ["T1078"]
+reason = "Recorded as context for correlation (who logged in, from where, when)."
+false_positives = "Normal activity."
+  [rule.match]
+  path_regex = '/(auth\.log|secure)(\.\d+)?$'
+  line_regex = 'Accepted (password|publickey|keyboard-interactive)'
+
+[[rule]]
+id = "LOCAL-LN-005"
+title = "Root shell started through sudo or su"
+priority = "medium"
+target = "line"
+attack = ["T1548.003"]
+reason = "A user opened an interactive root shell, giving unrestricted control of the system."
+false_positives = "Administrators do this; check whether the account is an administrator and whether the timing fits their work."
+  [rule.match]
+  path_regex = '/(auth\.log|secure|sudo\.log)(\.\d+)?$'
+  line_regex = '''(COMMAND=/(usr/)?bin/(ba|z|da)?sh\b|COMMAND=/(usr/)?bin/su\b|su(\[\d+\])?: .*session opened for user root)'''
+  not_line_regex = 'CRON|by \(uid=0\)'
+
+[[rule]]
+id = "LOCAL-LN-006"
+title = "Decoded content passed to a shell"
+priority = "medium"
+target = "line"
+attack = ["T1140"]
+reason = "Base64-encoded text was decoded and executed, a way of hiding what a command does from casual review."
+false_positives = "Some installers and configuration tools decode embedded scripts."
+  [rule.match]
+  line_regex = '''base64\s+(-d|--decode)\b.*\|\s*(sudo\s+)?(ba|z|da)?sh\b'''
+
+[[rule]]
+id = "LOCAL-LN-007"
+title = "Download piped directly to a shell"
+priority = "medium"
+target = "line"
+attack = ["T1105"]
+reason = "Content was downloaded and executed in one step, without being saved for review."
+false_positives = "Many legitimate install instructions use this pattern; check the source URL."
+  [rule.match]
+  line_regex = '''\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|da)?sh\b'''
+
+[[rule]]
+id = "LOCAL-LN-008"
+title = "Account created or added to an administrative group"
+priority = "low"
+target = "line"
+attack = ["T1136.001", "T1098"]
+reason = "A local account was created or given administrative rights."
+false_positives = "Onboarding and package installation create accounts; confirm against change records."
+  [rule.match]
+  path_regex = '/(auth\.log|secure|syslog|messages)(\.\d+)?$'
+  line_regex = '''(new user: name=|useradd\[\d+\]|usermod\[\d+\]: add '\S+' to (shadow )?group '(sudo|wheel|adm|root)'|add '\S+' to group '(sudo|wheel|adm|root)')'''

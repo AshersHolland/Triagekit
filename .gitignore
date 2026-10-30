@@ -1,0 +1,35 @@
+# ---- Case data and outputs: NEVER commit ----
+triage.toml
+out/
+output/
+triage/
+cases/
+evidence/
+recovered/
+findings/
+reviews.json
+
+# Downloaded feeds and rule sets (fetch them; do not redistribute)
+feeds/
+sigma/
+
+# Disk images and forensic containers
+*.dd
+*.img
+*.raw
+*.E01
+*.Ex01
+*.aff
+*.vmdk
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
